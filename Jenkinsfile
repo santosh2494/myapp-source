@@ -1,62 +1,77 @@
 pipeline {
-  agent any
 
-  environment {
-    REGISTRY = "docker.io/yourdockerhub"
-    IMAGE = "myapp"
-    VERSION = "${BUILD_NUMBER}"
-    GITOPS_REPO = "git@github.com:yourorg/gitops-apps.git"
-  }
+    agent any
 
-  stages {
-
-    stage('Checkout') {
-      steps { checkout scm }
+    environment {
+        IMAGE_NAME = "santosh2404/myapp"
+        IMAGE_TAG  = "${BUILD_NUMBER}"
+        GITOPS_REPO = "https://github.com/santosh2494/myapp-source.git"
     }
 
-    stage('Tests') {
-      steps { sh 'pytest || true' }
-    }
+    stages {
 
-    stage('Build Image') {
-      steps {
-        script {
-          docker.build("${REGISTRY}/${IMAGE}:${VERSION}")
+        stage('Checkout') {
+            steps {
+                git branch: 'master',
+                url: 'https://github.com/santosh2494/myapp-source.git'
+            }
         }
-      }
-    }
 
-    stage('Push Image') {
-      steps {
-        withCredentials([usernamePassword(
-          credentialsId: 'dockerhub-creds',
-          usernameVariable: 'USER',
-          passwordVariable: 'PASS')]) {
-
-          sh '''
-          docker login -u $USER -p $PASS
-          docker push ${REGISTRY}/${IMAGE}:${VERSION}
-          docker tag ${REGISTRY}/${IMAGE}:${VERSION} ${REGISTRY}/${IMAGE}:latest
-          docker push ${REGISTRY}/${IMAGE}:latest
-          '''
+        stage('Build Docker Image') {
+            steps {
+                sh '''
+                docker build -t $IMAGE_NAME:$IMAGE_TAG .
+                '''
+            }
         }
-      }
-    }
 
-    stage('Update GitOps') {
-      steps {
-        sshagent(['gitops-ssh']) {
-          sh '''
-          git clone ${GITOPS_REPO}
-          cd gitops-apps/apps/myapp/overlays/dev
-          sed -i "s/newTag:.*/newTag: ${VERSION}/g" kustomization.yaml
-          git config user.email "jenkins@company.com"
-          git config user.name "jenkins"
-          git commit -am "Deploy ${VERSION}"
-          git push
-          '''
+        stage('Push Docker Image') {
+            steps {
+
+                withCredentials([usernamePassword(
+                    credentialsId: 'dockerhub-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+
+                    sh '''
+                    echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+
+                    docker push $IMAGE_NAME:$IMAGE_TAG
+                    '''
+                }
+            }
         }
-      }
+
+        stage('Update GitOps Repo') {
+
+            steps {
+
+                withCredentials([usernamePassword(
+                    credentialsId: 'git-creds',
+                    usernameVariable: 'GIT_USER',
+                    passwordVariable: 'GIT_PASS'
+                )]) {
+
+                    sh '''
+                    rm -rf gitops
+
+                    git clone https://$GIT_USER:$GIT_PASS@github.com/YOURUSER/gitops-apps.git gitops
+
+                    cd gitops
+
+                    sed -i "s|image:.*|image: docker.io/santosh2404/myapp:$IMAGE_TAG|g" apps/myapp/base/deployment.yaml
+
+                    git config user.email "jenkins@company.local"
+                    git config user.name "Jenkins"
+
+                    git add .
+                    git commit -m "Updated image to build $IMAGE_TAG"
+
+                    git push
+                    '''
+                }
+            }
+        }
     }
-  }
 }
