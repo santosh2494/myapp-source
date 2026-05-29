@@ -56,7 +56,7 @@ pipeline {
                     sh '''
                     rm -rf gitops
 
-                    git clone https://$GIT_USER:$GIT_PASS@github.com/YOURUSER/gitops-apps.git gitops
+                    git clone https://$GIT_USER:$GIT_PASS@github.com/santosh2494/gitops-apps.git gitops
 
                     cd gitops
 
